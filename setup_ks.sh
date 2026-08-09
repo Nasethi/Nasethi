@@ -26,9 +26,9 @@ PACKAGES=(
 echo "Instaluję pakiety systemowe..."
 apt install -y "${PACKAGES[@]}"
 
-echo "Aktualizuję pip i instaluję pakiety Python..."
-python3 -m pip install --upgrade pip
-python3 -m pip install beautifulsoup4 requests psycopg2-binary
+echo "Instaluję pakiety Python z repozytorium Ubuntu..."
+# W Ubuntu lepiej używać pakietów systemowych, aby uniknąć problemów z zarządzaniem środowiskiem.
+# Pip jest dostępny wyłącznie w wirtualnych środowiskach lub jako pakiet użytkownika.
 
 SHARE_DIR="/srv/autocore_photos"
 SAMBA_CONF="/etc/samba/smb.conf"
