@@ -2237,7 +2237,7 @@ def ask_package_details(parent, order_id=None, allow_skip=False):
     ttk.Button(btn_frame, text="Dodaj", command=on_ok).pack(side="left", padx=10)
     ttk.Button(btn_frame, text="Anuluj", command=on_cancel).pack(side="left", padx=10)
 
-    win.grab_set()
+    safe_grab_window(win)
     win.wait_window()
     return result
 
@@ -2869,7 +2869,7 @@ def add_signeda_window(root, tree, category_cb, model_cb, stats_label):
                 price_win.destroy()
             ttk.Button(price_win, text="Użyj własnej ceny", command=set_custom).pack(side="left", padx=10, pady=10)
             ttk.Button(price_win, text="Użyj regularnej ceny", command=set_regular).pack(side="right", padx=10, pady=10)
-            price_win.grab_set()
+            safe_grab_window(price_win)
             price_win.wait_window()
             final_price = data['price']
             force = 0
@@ -4132,7 +4132,7 @@ def create_order_window(root, stats_label, master_tree, category_cb, model_cb):
             update_total()
             show_topmost_info("OK", f"Dodano pozycję korygującą: {diff:.2f} zł", parent=win)
         ttk.Button(force_win, text="Zastosuj", command=apply_force).pack(pady=10)
-        force_win.grab_set()
+        safe_grab_window(force_win)
         force_win.wait_window()
 
     ttk.Button(total_frame, text="Wymuś wartość", command=force_total).pack(side="left", padx=10)
@@ -4620,7 +4620,7 @@ def edit_order_window(order_id, parent_win, stats_label, master_tree, category_c
             force_win.destroy()
             show_topmost_info("OK", f"Dodano pozycję korygującą: {diff:.2f} zł", parent=win)
         ttk.Button(force_win, text="Zastosuj", command=apply_force_edit).pack(pady=10)
-        force_win.grab_set()
+        safe_grab_window(force_win)
         force_win.wait_window()
 
     ttk.Button(total_frame, text="Wymuś wartość", command=force_total_edit).pack(side="left", padx=10)
