@@ -363,6 +363,21 @@ def find_existing_product_by_barcode(barcode, exclude_barcode=None):
     return cur.fetchone()
 
 # ---------- DIALOGI Z TOPMOST ----------
+def safe_grab_window(win):
+    try:
+        win.update_idletasks()
+        win.deiconify()
+        win.lift()
+        win.grab_set()
+    except tk.TclError as e:
+        logging.warning(f"grab_set failed for window {win}: {e}")
+        try:
+            win.lift()
+            win.focus_force()
+        except Exception:
+            pass
+
+
 def show_topmost_info(title, message, parent=None):
     win = tk.Toplevel(parent if parent else root)
     win.title(title)
@@ -370,8 +385,9 @@ def show_topmost_info(title, message, parent=None):
     win.geometry("400x150")
     tk.Label(win, text=message, wraplength=380).pack(pady=20)
     tk.Button(win, text="OK", command=win.destroy).pack()
-    win.grab_set()
+    safe_grab_window(win)
     win.wait_window()
+
 
 def show_topmost_error(title, message, parent=None):
     win = tk.Toplevel(parent if parent else root)
@@ -380,8 +396,9 @@ def show_topmost_error(title, message, parent=None):
     win.geometry("400x150")
     tk.Label(win, text=message, wraplength=380, fg="red").pack(pady=20)
     tk.Button(win, text="OK", command=win.destroy).pack()
-    win.grab_set()
+    safe_grab_window(win)
     win.wait_window()
+
 
 def show_topmost_warning(title, message, parent=None):
     win = tk.Toplevel(parent if parent else root)
@@ -390,8 +407,9 @@ def show_topmost_warning(title, message, parent=None):
     win.geometry("400x150")
     tk.Label(win, text=message, wraplength=380, fg="orange").pack(pady=20)
     tk.Button(win, text="OK", command=win.destroy).pack()
-    win.grab_set()
+    safe_grab_window(win)
     win.wait_window()
+
 
 def ask_topmost_yesno(title, message, parent=None):
     result = False
@@ -410,9 +428,10 @@ def ask_topmost_yesno(title, message, parent=None):
         win.destroy()
     tk.Button(win, text="Tak", command=yes).pack(side="left", padx=20, pady=10)
     tk.Button(win, text="Nie", command=no).pack(side="right", padx=20, pady=10)
-    win.grab_set()
+    safe_grab_window(win)
     win.wait_window()
     return result
+
 
 def ask_topmost_string(title, prompt, parent=None):
     result = None
@@ -428,9 +447,10 @@ def ask_topmost_string(title, prompt, parent=None):
         result = entry.get()
         win.destroy()
     tk.Button(win, text="OK", command=ok).pack(pady=10)
-    win.grab_set()
+    safe_grab_window(win)
     win.wait_window()
     return result
+
 
 def ask_topmost_number(title, prompt, parent=None, default=0, min_val=0, max_val=9999):
     result = None
@@ -454,7 +474,7 @@ def ask_topmost_number(title, prompt, parent=None, default=0, min_val=0, max_val
         except:
             show_topmost_warning("Uwaga", "Podaj poprawną liczbę", parent=win)
     tk.Button(win, text="OK", command=ok).pack(pady=10)
-    win.grab_set()
+    safe_grab_window(win)
     win.wait_window()
     return result
 
