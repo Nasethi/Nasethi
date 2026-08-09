@@ -3439,7 +3439,17 @@ def show_product_details_window(barcode, master_tree, category_cb, model_cb, sta
             photo_label.config(text="Brak zdjęcia", foreground="gray")
 
     def open_photo_folder():
-        os.makedirs(expected_path, exist_ok=True)
+        try:
+            os.makedirs(expected_path, exist_ok=True)
+        except PermissionError as e:
+            logging.error(f"Cannot create photos folder {expected_path}: {e}")
+            show_topmost_error(
+                "Błąd uprawnień",
+                f"Brak uprawnień do utworzenia katalogu zdjęć:\n{expected_path}\n\n" \
+                "Ustaw poprawne prawa do katalogu photos lub uruchom program w katalogu, do którego masz zapis.",
+                parent=win
+            )
+            return
         open_folder(expected_path)
     ttk.Button(left_frame, text="Otwórz folder", command=open_photo_folder).pack(pady=5)
 
@@ -3453,7 +3463,17 @@ def show_product_details_window(barcode, master_tree, category_cb, model_cb, sta
             if not photo_url:
                 show_topmost_warning("Uwaga", "Signeda nie zwróciła adresu zdjęcia", parent=win)
                 return
-            os.makedirs(expected_path, exist_ok=True)
+            try:
+                os.makedirs(expected_path, exist_ok=True)
+            except PermissionError as e:
+                logging.error(f"Cannot create photos folder {expected_path}: {e}")
+                show_topmost_error(
+                    "Błąd uprawnień",
+                    f"Brak uprawnień do utworzenia katalogu zdjęć:\n{expected_path}\n\n" \
+                    "Ustaw poprawne prawa do katalogu photos lub uruchom program w katalogu, do którego masz zapis.",
+                    parent=win
+                )
+                return
             folder = download_product_photo(barcode, photo_url)
             if folder:
                 cur.execute("UPDATE products SET photos_folder=%s WHERE barcode=%s", (folder, barcode))
