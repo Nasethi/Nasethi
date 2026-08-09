@@ -315,14 +315,14 @@ def stock_tag(stock_str):
     return "red"
 
 def get_photos_base_dir():
-    cwd_photos = os.path.abspath("photos")
+    app_photos = os.path.join(APP_DIR, "photos")
     try:
-        if os.path.exists(cwd_photos):
-            if os.access(cwd_photos, os.W_OK):
-                return cwd_photos
+        if os.path.exists(app_photos):
+            if os.access(app_photos, os.W_OK):
+                return app_photos
         else:
-            os.makedirs(cwd_photos, exist_ok=True)
-            return cwd_photos
+            os.makedirs(app_photos, exist_ok=True)
+            return app_photos
     except Exception:
         pass
 
@@ -332,7 +332,12 @@ def get_photos_base_dir():
         return home_photos
     except Exception as e:
         logging.error(f"Cannot create home photos folder {home_photos}: {e}")
-        return cwd_photos
+        return app_photos
+
+
+def get_product_photos_folder(barcode):
+    barcode = str(barcode or "").strip()
+    return os.path.join(get_photos_base_dir(), barcode) if barcode else get_photos_base_dir()
 
 
 def open_folder(path=None):
@@ -768,7 +773,7 @@ def download_product_photo(barcode, photo_url):
     try:
         if not photo_url.startswith('http'):
             photo_url = 'https://www.signeda.pl' + photo_url
-        folder = os.path.join("photos", str(barcode))
+        folder = get_product_photos_folder(barcode)
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, "main.jpg")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
@@ -6137,7 +6142,7 @@ def additional_options_window(root, tree, stats_label, category_cb, model_cb):
     def open_product_folder():
         barcode = ask_topmost_string("Otwórz folder produktu", "Podaj kod produktu:", parent=win)
         if barcode:
-            folder = os.path.join("photos", barcode.strip())
+            folder = get_product_photos_folder(barcode)
             if os.path.exists(folder):
                 open_folder(folder)
             else:
