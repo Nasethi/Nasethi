@@ -24,12 +24,206 @@ import tempfile
 import configparser
 import socket
 from datetime import datetime, timedelta, timezone
+from html import escape
+from pathlib import Path
+from typing import Dict, List, Any
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from scanner_entry_utils import bind_scan_submit, focus_scanner_entry, normalize_barcode
-from quote_template import build_quote_html, find_quote_template
-from inventory_reservations import build_reservation_plan, validate_stock_adjustment
-from reports import export_stock_report
+
+# ---------- scanner_entry_utils.py ----------
+def normalize_barcode(value):
+    """Normalize barcode values so case and extra whitespace do not create duplicates."""
+    if value is None:
+        return ""
+    return re.sub(r"\s+", "", str(value).strip()).upper()
+
+
+def bind_scan_submit(entry_widget, callback):
+    """Bind both Enter and numeric keypad Enter to the same submit callback."""
+    entry_widget.bind("<Return>", callback)
+    entry_widget.bind("<KP_Enter>", callback)
+
+
+def focus_scanner_entry(window, entry_widget, delay_ms=20):
+    """Focus the scanner entry and select its contents after a short delay."""
+    def _focus():
+        if not hasattr(entry_widget, "winfo_exists") or entry_widget.winfo_exists():
+            if hasattr(entry_widget, "focus_force"):
+                entry_widget.focus_force()
+            if hasattr(entry_widget, "select_range"):
+                entry_widget.select_range(0, tk.END)
+            if hasattr(entry_widget, "icursor"):
+                entry_widget.icursor(tk.END)
+
+    window.after(delay_ms, _focus)
+    window.after(delay_ms + 120, _focus)
+
+# ---------- quote_template.py ----------
+def find_quote_template(search_dir=None):
+    """Find a quote template HTML file in the given folder or app directory."""
+    base_dir = Path(search_dir or Path(__file__).resolve().parent)
+    candidates = [
+        base_dir / 'quote_template.html',
+        base_dir / 'quote-template.html',
+        base_dir / 'wycena_template.html',
+        base_dir / 'quote_template.htm',
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def build_quote_html(context=None, template_path=None, **kwargs):
+    """Build an HTML quote document using a template if available."""
+    if kwargs:
+        context = kwargs
+    if context is None:
+        context = {}
+    if template_path:
+        template_file = Path(template_path)
+        if template_file.exists():
+            content = template_file.read_text(encoding='utf-8')
+            for key, value in context.items():
+                replacement = value if key == 'items_table' else escape(str(value))
+                content = content.replace(f'{{{{{key}}}}}', replacement)
+            return content
+    return render_quote_preview(context)
+
+
+def render_quote_preview(context):
+    """Fallback HTML preview that can be printed or converted to PDF."""
+    title = escape(context.get('title', 'WYCENA'))
+    customer_name = escape(context.get('customer_name', ''))
+    phone = escape(context.get('phone', ''))
+    address = escape(context.get('address', ''))
+    email = escape(context.get('email', ''))
+    doc_type = escape(context.get('doc_type', ''))
+    delivery = escape(context.get('delivery', ''))
+    extra_info = escape(context.get('extra_info', ''))
+    items_table = context.get('items_table', '')
+    total_price = escape(str(context.get('total_price', '0.00')))
+
+    return f"""
+    <html><head><meta charset='utf-8'><title>{title}</title>
+    <style>
+      body{{font-family:Arial,sans-serif;padding:24px; color:#222; background:#f8f8f8;}}
+      .container{{max-width:900px;margin:0 auto;background:#fff;padding:24px;border:1px solid #ddd;}}
+      table{{border-collapse:collapse;width:100%;margin-top:18px;}}
+      th,td{{border:1px solid #ccc;padding:10px;text-align:left;}}
+      th{{background:#f0f0f0;}}
+      h1{{margin-bottom:8px;}}
+      .meta p{{margin:4px 0;}}
+      .footer{{margin-top:16px;padding-top:16px;border-top:1px solid #ddd;}}
+    </style></head>
+    <body>
+      <div class="container">
+        <h1>{title}</h1>
+        <div class="meta">
+          <p><strong>Klient:</strong> {customer_name}</p>
+          <p><strong>Telefon:</strong> {phone}</p>
+          <p><strong>Adres:</strong> {address}</p>
+          <p><strong>Email:</strong> {email}</p>
+          <p><strong>Typ dokumentu:</strong> {doc_type}</p>
+          <p><strong>Typ dostawy:</strong> {delivery}</p>
+          <p><strong>Uwagi:</strong> {extra_info}</p>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Pozycja</th><th>Miejsce</th><th>OEM</th><th>Typ</th><th>Cena</th></tr>
+          </thead>
+          <tbody>{items_table}</tbody>
+        </table>
+        <div class="footer"><strong>SUMA BRUTTO:</strong> {total_price} zł</div>
+      </div>
+    </body></html>
+    """
+
+# ---------- inventory_reservations.py ----------
+SPECIAL_BARCODES = {"RABAT", "CUSTOM", "RABAT_FORCED", "DOPLATA_FORCED"}
+
+
+def validate_stock_adjustment(current_stock: int, delta: int) -> tuple[bool, int]:
+    """Validate whether applying a stock delta is allowed."""
+    current = int(current_stock or 0)
+    change = int(delta or 0)
+    new_stock = current + change
+    if new_stock < 0:
+        return False, new_stock
+    return True, new_stock
+
+
+def summarize_reservations(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    summary = {"active": 0, "consumed": 0, "released": 0}
+    for row in rows:
+        status = str(row.get("status") or "").strip().lower()
+        if status in summary:
+            summary[status] += 1
+    return summary
+
+
+def should_release_reservations_for_status(status: str) -> bool:
+    normalized = str(status or "").strip().upper()
+    return normalized in {"ARCHIVED", "CANCELLED", "DELETED", "REJECTED", "VOID"}
+
+
+def build_reservation_plan(items: List[Dict[str, Any]], stock_by_barcode: Dict[str, int]) -> Dict[str, Any]:
+    """Build reservation plan for order items.
+
+    Items that are special or have sufficient stock are allowed.
+    Products without enough stock are blocked and returned in the response.
+    """
+    reservations = []
+    blocked_items = []
+
+    for item in items:
+        barcode = str(item.get("barcode", "") or "").strip().upper()
+        if not barcode or barcode in SPECIAL_BARCODES:
+            continue
+
+        stock = int(stock_by_barcode.get(barcode, 0) or 0)
+        if stock <= 0:
+            blocked_items.append({
+                "order_item_id": item.get("order_item_id"),
+                "barcode": item.get("barcode"),
+                "reason": "insufficient_stock",
+            })
+            continue
+
+        reservations.append({
+            "order_item_id": item.get("order_item_id"),
+            "barcode": barcode,
+            "qty": 1,
+        })
+
+    return {
+        "ok": not blocked_items,
+        "reservations": reservations,
+        "blocked_items": blocked_items,
+    }
+
+# ---------- reports.py ----------
+
+def export_stock_report(conn, output_path=None):
+    if output_path is None:
+        output_path = f"stock_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT barcode, name, stock, product_type, category, side, position
+        FROM products
+        WHERE barcode NOT IN ('RABAT','CUSTOM')
+        ORDER BY stock ASC, name ASC
+    """)
+    rows = cur.fetchall()
+
+    with open(output_path, "w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["barcode", "name", "stock", "product_type", "category", "side", "position"])
+        for row in rows:
+            writer.writerow(row)
+
+    return output_path
 
 # ---------- KONFIGURACJA LOGOWANIA ----------
 console_handler = logging.StreamHandler(sys.stdout)
