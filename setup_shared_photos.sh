@@ -32,9 +32,24 @@ fi
 
 echo -ne "$SMB_PASS\n$SMB_PASS\n" | smbpasswd -s -a "$SMB_USER"
 
+if ! pdbedit -L | cut -d: -f1 | grep -qx "$SMB_USER"; then
+  echo "Błąd: użytkownik Samba $SMB_USER nie został dodany." >&2
+  echo "Spróbuj ręcznie: sudo smbpasswd -a $SMB_USER" >&2
+  exit 1
+fi
+
 echo "Konfiguruję udział Samba..."
-if ! grep -q "^\[$SHARE_NAME\]" "$SAMBA_CONF" 2>/dev/null; then
-  cat <<EOF >> "$SAMBA_CONF"
+if grep -q "^\[$SHARE_NAME\]" "$SAMBA_CONF" 2>/dev/null; then
+  echo "Aktualizuję istniejącą sekcję [$SHARE_NAME] w $SAMBA_CONF"
+  awk -v share="[$SHARE_NAME]" '
+    $0 == share {inside=1; next}
+    /^\[.*\]/ { if (inside) { inside=0 } }
+    !inside { print }
+  ' "$SAMBA_CONF" > "$SAMBA_CONF.tmp"
+  mv "$SAMBA_CONF.tmp" "$SAMBA_CONF"
+fi
+
+cat <<EOF >> "$SAMBA_CONF"
 [$SHARE_NAME]
   path = $SHARE_DIR
   browsable = yes
@@ -47,11 +62,8 @@ if ! grep -q "^\[$SHARE_NAME\]" "$SAMBA_CONF" 2>/dev/null; then
   force group = nogroup
   guest ok = no
 EOF
-  echo "Dodano udział Samba [$SHARE_NAME] do $SAMBA_CONF"
-else
-  echo "Udział Samba [$SHARE_NAME] już istnieje w $SAMBA_CONF"
-  echo "Upewnij się, że w sekcji [$SHARE_NAME] masz poprawne ustawienia valid users i guest ok = no."
-fi
+
+echo "Dodano/zmodyfikowano udział Samba [$SHARE_NAME] w $SAMBA_CONF"
 
 echo "Restartuję usługę Samba..."
 systemctl restart smbd
