@@ -314,9 +314,30 @@ def stock_tag(stock_str):
         pass
     return "red"
 
+def get_photos_base_dir():
+    cwd_photos = os.path.abspath("photos")
+    try:
+        if os.path.exists(cwd_photos):
+            if os.access(cwd_photos, os.W_OK):
+                return cwd_photos
+        else:
+            os.makedirs(cwd_photos, exist_ok=True)
+            return cwd_photos
+    except Exception:
+        pass
+
+    home_photos = os.path.join(os.path.expanduser("~"), "autocore_photos")
+    try:
+        os.makedirs(home_photos, exist_ok=True)
+        return home_photos
+    except Exception as e:
+        logging.error(f"Cannot create home photos folder {home_photos}: {e}")
+        return cwd_photos
+
+
 def open_folder(path=None):
     if path is None:
-        path = os.path.abspath("photos")
+        path = get_photos_base_dir()
     else:
         path = os.path.abspath(path)
     if not os.path.exists(path):
@@ -3396,7 +3417,8 @@ def show_product_details_window(barcode, master_tree, category_cb, model_cb, sta
     right_frame = ttk.Frame(main_frame)
     right_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
 
-    expected_path = os.path.join("photos", barcode)
+    photos_base_dir = get_photos_base_dir()
+    expected_path = os.path.join(photos_base_dir, barcode)
     photo_path = None
     if os.path.exists(expected_path):
         for candidate_ext in ("jpg", "jpeg", "png", "gif", "bmp", "webp"):
@@ -3463,14 +3485,23 @@ def show_product_details_window(barcode, master_tree, category_cb, model_cb, sta
             if not photo_url:
                 show_topmost_warning("Uwaga", "Signeda nie zwróciła adresu zdjęcia", parent=win)
                 return
+            base_dir = get_photos_base_dir()
+            if not os.path.exists(base_dir):
+                show_topmost_error(
+                    "Błąd",
+                    f"Nie można uzyskać dostępu do katalogu zdjęć:\n{base_dir}",
+                    parent=win
+                )
+                return
+            expected_path_local = os.path.join(base_dir, barcode)
             try:
-                os.makedirs(expected_path, exist_ok=True)
+                os.makedirs(expected_path_local, exist_ok=True)
             except PermissionError as e:
-                logging.error(f"Cannot create photos folder {expected_path}: {e}")
+                logging.error(f"Cannot create photos folder {expected_path_local}: {e}")
                 show_topmost_error(
                     "Błąd uprawnień",
-                    f"Brak uprawnień do utworzenia katalogu zdjęć:\n{expected_path}\n\n" \
-                    "Ustaw poprawne prawa do katalogu photos lub uruchom program w katalogu, do którego masz zapis.",
+                    f"Brak uprawnień do utworzenia katalogu zdjęć:\n{expected_path_local}\n\n" \
+                    "Ustaw poprawne prawa do katalogu zdjęć lub uruchom program w katalogu, do którego masz zapis.",
                     parent=win
                 )
                 return
