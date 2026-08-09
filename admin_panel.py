@@ -152,7 +152,7 @@ class AdminApp:
             tb = traceback.format_exc()
             logging.error('DB init failed: %s', tb)
             try:
-                self.root.after(0, lambda: messagebox.showerror('Błąd DB', f'Nie udało się połączyć z bazą:\n{e}'))
+                self.root.after(0, lambda err=e: messagebox.showerror('Błąd DB', f'Nie udało się połączyć z bazą:\n{err}'))
             except Exception:
                 pass
 
